@@ -231,8 +231,18 @@ def scaled_dot_product_attention(query, key, value, mask=None):
 
     return context, attention_weights
 
-# Step 23 - split_last_dim_into_heads (not yet solved)
-# TODO: implement
+# Step 23 - split_last_dim_into_heads
+import torch
+
+def split_last_dim_into_heads(tensor, num_heads):
+    # TODO: reshape (B, L, d_model) into (B, L, num_heads, d_model // num_heads)
+    batch_size, seq_len, d_model = tensor.shape
+
+    if d_model % num_heads != 0:
+        raise ValueError("d_model must be divisible by num_heads")
+
+    head_dim = d_model // num_heads
+    return tensor.reshape(batch_size, seq_len, num_heads, head_dim)
 
 # Step 24 - transpose_heads_before_sequence (not yet solved)
 # TODO: implement
