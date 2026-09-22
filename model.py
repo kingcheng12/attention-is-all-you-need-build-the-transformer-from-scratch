@@ -749,8 +749,39 @@ def init_embedding_and_projection_parameters(vocab_size, d_model, tie_weights=Tr
         "output_projection": output_projection,
     }
 
-# Step 55 - collect_model_parameters_into_list (not yet solved)
-# TODO: implement
+# Step 55 - collect_model_parameters_into_list
+import torch
+
+def collect_model_parameters_into_list(encoder_layer_params, decoder_layer_params, embedding_params):
+    # TODO: walk the encoder, decoder, and embedding dicts and return a flat deduped list of tensors
+    parameters = []
+    seen_storage = set()
+
+    def collect(value):
+        if isinstance(value, torch.Tensor):
+            # Detect tied tensors or views that share the same storage.
+            storage_key = (
+                value.device,
+                value.untyped_storage().data_ptr(),
+            )
+
+            if storage_key not in seen_storage:
+                seen_storage.add(storage_key)
+                parameters.append(value)
+
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                collect(item)
+
+    collect(encoder_layer_params)
+    collect(decoder_layer_params)
+    collect(embedding_params)
+
+    return parameters
 
 # Step 56 - shift_targets_right_with_start_token (not yet solved)
 # TODO: implement
