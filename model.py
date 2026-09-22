@@ -684,8 +684,44 @@ def init_encoder_layer_parameters(d_model, num_heads, d_ff):
         "ffn_beta": torch.zeros(d_model, requires_grad=True),
     }
 
-# Step 53 - init_decoder_layer_parameters (not yet solved)
-# TODO: implement
+# Step 53 - init_decoder_layer_parameters
+import torch
+
+def init_decoder_layer_parameters(d_model, num_heads, d_ff):
+    # TODO: return a dict of requires_grad tensors for one decoder layer
+    if d_model % num_heads != 0:
+        raise ValueError("d_model must be divisible by num_heads")
+
+    def xavier(shape):
+        tensor = torch.empty(shape)
+        torch.nn.init.xavier_uniform_(tensor)
+        return tensor.requires_grad_()
+
+    return {
+        # Masked self-attention
+        "w_q_self": xavier((d_model, d_model)),
+        "w_k_self": xavier((d_model, d_model)),
+        "w_v_self": xavier((d_model, d_model)),
+        "w_o_self": xavier((d_model, d_model)),
+        "self_gamma": torch.ones(d_model, requires_grad=True),
+        "self_beta": torch.zeros(d_model, requires_grad=True),
+
+        # Encoder-decoder cross-attention
+        "w_q_cross": xavier((d_model, d_model)),
+        "w_k_cross": xavier((d_model, d_model)),
+        "w_v_cross": xavier((d_model, d_model)),
+        "w_o_cross": xavier((d_model, d_model)),
+        "cross_gamma": torch.ones(d_model, requires_grad=True),
+        "cross_beta": torch.zeros(d_model, requires_grad=True),
+
+        # Position-wise feed-forward network
+        "w1": xavier((d_model, d_ff)),
+        "b1": torch.zeros(d_ff, requires_grad=True),
+        "w2": xavier((d_ff, d_model)),
+        "b2": torch.zeros(d_model, requires_grad=True),
+        "ffn_gamma": torch.ones(d_model, requires_grad=True),
+        "ffn_beta": torch.zeros(d_model, requires_grad=True),
+    }
 
 # Step 54 - init_embedding_and_projection_parameters (not yet solved)
 # TODO: implement
