@@ -649,8 +649,40 @@ def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
 
     return apply_log_softmax_over_vocab(logits)
 
-# Step 52 - init_encoder_layer_parameters (not yet solved)
-# TODO: implement
+# Step 52 - init_encoder_layer_parameters
+import torch
+import math
+
+def init_encoder_layer_parameters(d_model, num_heads, d_ff):
+    """Return a dict of leaf tensors with requires_grad=True for one encoder layer."""
+    # TODO: allocate w_q, w_k, w_v, w_o, w1, b1, w2, b2, attn_gamma, attn_beta, ffn_gamma, ffn_beta.
+    if d_model % num_heads != 0:
+        raise ValueError("d_model must be divisible by num_heads")
+
+    def xavier(shape):
+        tensor = torch.empty(shape)
+        torch.nn.init.xavier_uniform_(tensor)
+        return tensor.requires_grad_()
+
+    return {
+        # Self-attention projections: x @ weight.T
+        "w_q": xavier((d_model, d_model)),
+        "w_k": xavier((d_model, d_model)),
+        "w_v": xavier((d_model, d_model)),
+        "w_o": xavier((d_model, d_model)),
+
+        # FFN projections: x @ w1, then hidden @ w2
+        "w1": xavier((d_model, d_ff)),
+        "b1": torch.zeros(d_ff, requires_grad=True),
+        "w2": xavier((d_ff, d_model)),
+        "b2": torch.zeros(d_model, requires_grad=True),
+
+        # LayerNorm parameters
+        "attn_gamma": torch.ones(d_model, requires_grad=True),
+        "attn_beta": torch.zeros(d_model, requires_grad=True),
+        "ffn_gamma": torch.ones(d_model, requires_grad=True),
+        "ffn_beta": torch.zeros(d_model, requires_grad=True),
+    }
 
 # Step 53 - init_decoder_layer_parameters (not yet solved)
 # TODO: implement
