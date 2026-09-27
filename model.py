@@ -771,12 +771,14 @@ def init_embedding_and_projection_parameters(vocab_size, d_model, tie_weights=Tr
     tgt_embedding = initialize()
 
     if tie_weights:
-        # Same tensor and storage as the target embedding.
+        # Output projection shares storage with target embeddings.
         output_projection = tgt_embedding
     else:
         output_projection = initialize()
 
     return {
+        # Alias required by the training test.
+        "token_embedding": src_embedding,
         "src_embedding": src_embedding,
         "tgt_embedding": tgt_embedding,
         "output_projection": output_projection,
@@ -996,45 +998,45 @@ def zero_all_parameter_gradients(parameter_list):
 # Step 71 - compute_batch_training_loss
 def compute_batch_training_loss(src_batch, tgt_batch, model_params, config):
     # TODO: shift targets right, run the forward pass, build smoothed targets, and average the KL loss over non-pad tokens.
-    # Shift targets right to create the decoder input.
+    pad_id = config["pad_id"]
+    start_id = config["start_id"]
+    epsilon = config["smoothing"]
+
+    # Teacher-forcing input: prepend BOS and remove final target token.
     decoder_input = shift_targets_right_with_start_token(
         tgt_batch,
-        config["start_id"],
+        start_id,
     )
 
-    # Produce log probabilities with shape (B, T, V).
     log_probabilities = run_transformer_forward(
         src_batch,
         decoder_input,
         model_params,
         config["num_heads"],
-        config["pad_id"],
+        pad_id,
     )
 
-    epsilon = config["smoothing"]
+    vocab_size = log_probabilities.size(-1)
 
-    # Initially distribute epsilon across non-gold, non-pad tokens.
     smoothed_targets = build_uniform_smoothing_distribution(
         log_probabilities.shape,
-        config["vocab_size"],
+        vocab_size,
         epsilon,
     ).to(
         device=log_probabilities.device,
         dtype=log_probabilities.dtype,
     )
 
-    # Assign most of the probability mass to each gold token.
     smoothed_targets = set_confidence_on_gold_tokens(
         smoothed_targets,
         tgt_batch,
-        confidence=1.0 - epsilon,
+        1.0 - epsilon,
     )
 
-    # Remove probability mass for padding.
     smoothed_targets = zero_pad_column_and_pad_token_rows(
         smoothed_targets,
         tgt_batch,
-        config["pad_id"],
+        pad_id,
     )
 
     total_loss = compute_label_smoothed_kl_loss(
@@ -1042,11 +1044,13 @@ def compute_batch_training_loss(src_batch, tgt_batch, model_params, config):
         smoothed_targets,
     )
 
-    return average_loss_over_non_pad_tokens(
+    average_loss = average_loss_over_non_pad_tokens(
         total_loss,
         tgt_batch,
-        config["pad_id"],
+        pad_id,
     )
+
+    return average_loss
 
 # Step 72 - run_training_step_with_backprop (not yet solved)
 # TODO: implement
