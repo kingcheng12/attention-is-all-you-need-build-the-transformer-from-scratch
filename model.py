@@ -590,17 +590,45 @@ def apply_log_softmax_over_vocab(logits):
 # Step 51 - run_transformer_forward
 def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
     # TODO: embed src+tgt, add PE, build masks, run encoder/decoder, project to log probs.
-    token_embedding = model_params["token_embedding"]
-    d_model = token_embedding.shape[1]
+    # Resolve embedding parameters.
+    if (
+        "src_embedding" in model_params
+        and "tgt_embedding" in model_params
+    ):
+        src_embedding = model_params["src_embedding"]
+        tgt_embedding = model_params["tgt_embedding"]
 
-    # Token embeddings: (B, L) -> (B, L, D)
-    src = token_embedding[src_ids]
-    tgt = token_embedding[tgt_ids]
+    elif "token_embedding" in model_params:
+        src_embedding = model_params["token_embedding"]
+        tgt_embedding = model_params["token_embedding"]
 
-    src = scale_embeddings_by_sqrt_d_model(src, d_model)
-    tgt = scale_embeddings_by_sqrt_d_model(tgt, d_model)
+    elif "embeddings" in model_params:
+        embeddings = model_params["embeddings"]
 
-    # Positional encodings
+        if isinstance(embeddings, torch.Tensor):
+            src_embedding = embeddings
+            tgt_embedding = embeddings
+        elif "src_embedding" in embeddings:
+            src_embedding = embeddings["src_embedding"]
+            tgt_embedding = embeddings["tgt_embedding"]
+        else:
+            src_embedding = embeddings["token_embedding"]
+            tgt_embedding = embeddings["token_embedding"]
+
+    else:
+        raise KeyError(
+            f"No embedding weights found. Keys: {list(model_params.keys())}"
+        )
+
+    d_model = src_embedding.shape[-1]
+
+    src = scale_embeddings_by_sqrt_d_model(
+        src_embedding[src_ids], d_model
+    )
+    tgt = scale_embeddings_by_sqrt_d_model(
+        tgt_embedding[tgt_ids], d_model
+    )
+
     max_len = max(src_ids.size(1), tgt_ids.size(1))
     pe = build_sinusoidal_positional_encoding(
         max_len, d_model
@@ -609,7 +637,6 @@ def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
     src = add_positional_encoding_to_embeddings(src, pe)
     tgt = add_positional_encoding_to_embeddings(tgt, pe)
 
-    # Masks
     src_mask = build_padding_mask(src_ids, pad_id)
 
     tgt_padding_mask = build_padding_mask(tgt_ids, pad_id)
@@ -622,7 +649,6 @@ def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
         tgt_causal_mask,
     )
 
-    # Encoder
     encoder_output = stack_encoder_layers(
         src,
         model_params["encoder_layers"],
@@ -630,7 +656,6 @@ def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
         src_mask,
     )
 
-    # Decoder
     decoder_output = stack_decoder_layers(
         tgt,
         encoder_output,
@@ -640,11 +665,19 @@ def run_transformer_forward(src_ids, tgt_ids, model_params, num_heads, pad_id):
         tgt_mask,
     )
 
-    # Vocabulary projection and log probabilities
+    if "output_projection" in model_params:
+        output_projection = model_params["output_projection"]
+        output_bias = model_params.get("output_projection_bias")
+    else:
+        output_projection = model_params["embeddings"]["output_projection"]
+        output_bias = model_params["embeddings"].get(
+            "output_projection_bias"
+        )
+
     logits = apply_final_output_projection(
         decoder_output,
-        model_params["output_projection"],
-        model_params.get("output_projection_bias"),
+        output_projection,
+        output_bias,
     )
 
     return apply_log_softmax_over_vocab(logits)
@@ -963,11 +996,13 @@ def zero_all_parameter_gradients(parameter_list):
 # Step 71 - compute_batch_training_loss
 def compute_batch_training_loss(src_batch, tgt_batch, model_params, config):
     # TODO: shift targets right, run the forward pass, build smoothed targets, and average the KL loss over non-pad tokens.
+    # Shift targets right to create the decoder input.
     decoder_input = shift_targets_right_with_start_token(
         tgt_batch,
         config["start_id"],
     )
 
+    # Produce log probabilities with shape (B, T, V).
     log_probabilities = run_transformer_forward(
         src_batch,
         decoder_input,
@@ -976,21 +1011,26 @@ def compute_batch_training_loss(src_batch, tgt_batch, model_params, config):
         config["pad_id"],
     )
 
+    epsilon = config["smoothing"]
+
+    # Initially distribute epsilon across non-gold, non-pad tokens.
     smoothed_targets = build_uniform_smoothing_distribution(
         log_probabilities.shape,
         config["vocab_size"],
-        config["smoothing"],
+        epsilon,
     ).to(
         device=log_probabilities.device,
         dtype=log_probabilities.dtype,
     )
 
+    # Assign most of the probability mass to each gold token.
     smoothed_targets = set_confidence_on_gold_tokens(
         smoothed_targets,
         tgt_batch,
-        1.0 - config["smoothing"],
+        confidence=1.0 - epsilon,
     )
 
+    # Remove probability mass for padding.
     smoothed_targets = zero_pad_column_and_pad_token_rows(
         smoothed_targets,
         tgt_batch,
@@ -1002,13 +1042,11 @@ def compute_batch_training_loss(src_batch, tgt_batch, model_params, config):
         smoothed_targets,
     )
 
-    average_loss = average_loss_over_non_pad_tokens(
+    return average_loss_over_non_pad_tokens(
         total_loss,
         tgt_batch,
         config["pad_id"],
     )
-
-    return average_loss
 
 # Step 72 - run_training_step_with_backprop (not yet solved)
 # TODO: implement
