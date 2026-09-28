@@ -77,6 +77,7 @@ python scaffold.py
 - [x] **65.** update_adam_first_moment
 - [x] **66.** update_adam_second_moment
 - [x] **67.** apply_adam_bias_correction
+- [ ] **68.** compute_adam_parameter_update
 - [x] **69.** apply_adam_step_to_all_parameters
 - [x] **70.** zero_all_parameter_gradients
 - [x] **71.** compute_batch_training_loss
@@ -84,7 +85,7 @@ python scaffold.py
 - [x] **73.** run_training_loop_for_steps
 - [x] **74.** pick_next_token_by_argmax
 - [x] **75.** compute_length_penalty
-- [ ] **76.** compute_candidate_scores
+- [x] **76.** compute_candidate_scores
 - [ ] **77.** select_top_k_candidates
 - [ ] **78.** append_tokens_to_beam_sequences
 - [ ] **79.** mark_finished_beams
